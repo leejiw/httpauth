@@ -23,6 +23,7 @@ type AuthOptions struct {
 	Realm               string
 	User                string
 	Password            string
+	Salt                string
 	AuthFunc            func(string, string, *http.Request) bool
 	UnauthorizedHandler http.Handler
 }
@@ -111,6 +112,22 @@ func (b *basicAuth) simpleBasicAuthFunc(user, pass string, r *http.Request) bool
 	return false
 }
 
+// hashedBasicAuthFunc authenticates the supplied username and password against
+// the User and Password set in the Options struct based on SHA-256 hashing.
+func (b *basicAuth) hashedBasicAuthFunc(user, pass string, r *http.Request) bool {
+	givenUser := sha256.Sum256([]byte(user))
+	givenHashed := sha256.Sum256([]byte(pass + b.opts.Salt))
+	requiredUser := sha256.Sum256([]byte(b.opts.User))
+	requiredHashed := []byte(b.opts.Password)
+
+	if subtle.ConstantTimeCompare(givenUser[:], requiredUser[:]) == 1 &&
+		subtle.ConstantTimeCompare(givenHashed[:], requiredHashed[:]) == 1 {
+		return true
+	}
+
+	return false
+}
+
 // Require authentication, and serve our error handler otherwise.
 func (b *basicAuth) requestAuth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm=%q`, b.opts.Realm))
@@ -182,4 +199,24 @@ func SimpleBasicAuth(user, password string) func(http.Handler) http.Handler {
 		Password: password,
 	}
 	return BasicAuth(opts)
+}
+
+// HashedBasicAuth is a convenience wrapper around BasicAuth based on SHA-256 hashing.
+// It takes a user and password, salt for hashing and
+// returns a pre-configured BasicAuth handler using the "Restricted" realm and a default 401 handler.
+func HashedBasicAuth(user, password, salt string) func(http.Handler) http.Handler {
+	opts := AuthOptions{
+		Realm:    "Restricted",
+		User:     user,
+		Password: password,
+		Salt:     salt,
+	}
+
+	fn := func(h http.Handler) http.Handler {
+		auth := basicAuth{h, opts}
+		auth.opts.AuthFunc = auth.hashedBasicAuthFunc
+		return auth
+	}
+
+	return fn
 }
