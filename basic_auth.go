@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -113,12 +114,19 @@ func (b *basicAuth) simpleBasicAuthFunc(user, pass string, r *http.Request) bool
 }
 
 // hashedBasicAuthFunc authenticates the supplied username and password against
-// the User and Password set in the Options struct based on SHA-256 hashing.
+// the User and Password set in the Options struct based on SHA-256 checksum of password+salt.
+// especially, Password field, in the Options struct, has SHA-256 hash as the plain string format.
+// so, it will be decoded into raw bytes format to be compared with the raw bytes hash generated from the given password.
 func (b *basicAuth) hashedBasicAuthFunc(user, pass string, r *http.Request) bool {
 	givenUser := sha256.Sum256([]byte(user))
 	givenHashed := sha256.Sum256([]byte(pass + b.opts.Salt))
 	requiredUser := sha256.Sum256([]byte(b.opts.User))
-	requiredHashed := []byte(b.opts.Password)
+	requiredHashed, err := hex.DecodeString(b.opts.Password)
+
+	// failed to decode checksum sting into byte array
+	if err != nil {
+		return false
+	}
 
 	if subtle.ConstantTimeCompare(givenUser[:], requiredUser[:]) == 1 &&
 		subtle.ConstantTimeCompare(givenHashed[:], requiredHashed[:]) == 1 {

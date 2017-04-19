@@ -3,6 +3,7 @@ package httpauth
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -99,12 +100,13 @@ func TestHashedBasicAuthAuthenticate(t *testing.T) {
 	password := "hashed-text-password"
 	salt := "test-salt"
 	hashed := sha256.Sum256([]byte(password + salt))
+	hashedString := fmt.Sprintf("%x", hashed) // to store in password field
 
 	// Provide a minimal test implementation.
 	authOpts := AuthOptions{
 		Realm:    "Restricted",
 		User:     "test-user",
-		Password: string(hashed[:]),
+		Password: hashedString,
 		Salt:     salt,
 	}
 
